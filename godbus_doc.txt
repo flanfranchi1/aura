@@ -1,0 +1,980 @@
+package dbus // import "github.com/godbus/dbus/v5"
+
+Package dbus implements bindings to the D-Bus message bus system.
+
+To use the message bus API, you first need to connect to a bus (usually the
+session or system bus). The acquired connection then can be used to call
+methods on remote objects and emit or receive signals. Using the Export method,
+you can arrange D-Bus methods calls to be directly translated to method calls on
+a Go value.
+
+# Conversion Rules
+
+For outgoing messages, Go types are automatically converted to
+the corresponding D-Bus types. See the official specification at
+https://dbus.freedesktop.org/doc/dbus-specification.html#type-system for more
+information on the D-Bus type system. The following types are directly encoded
+as their respective D-Bus equivalents:
+
+    Go type     | D-Bus type
+    ------------+-----------
+    byte        | BYTE
+    bool        | BOOLEAN
+    int16       | INT16
+    uint16      | UINT16
+    int         | INT32
+    uint        | UINT32
+    int32       | INT32
+    uint32      | UINT32
+    int64       | INT64
+    uint64      | UINT64
+    float64     | DOUBLE
+    string      | STRING
+    ObjectPath  | OBJECT_PATH
+    Signature   | SIGNATURE
+    Variant     | VARIANT
+    interface{} | VARIANT
+    UnixFDIndex | UNIX_FD
+
+Slices and arrays encode as ARRAYs of their element type.
+
+Maps encode as DICTs, provided that their key type can be used as a key for a
+DICT.
+
+Structs other than Variant and Signature encode as a STRUCT containing their
+exported fields in order. Fields whose tags contain `dbus:"-"` and unexported
+fields will be skipped.
+
+Pointers encode as the value they're pointed to.
+
+Types convertible to one of the base types above will be mapped as the base
+type.
+
+Trying to encode any other type or a slice, map or struct containing an
+unsupported type will result in an InvalidTypeError.
+
+For incoming messages, the inverse of these rules are used, with the exception
+of STRUCTs. Incoming STRUCTS are represented as a slice of empty interfaces
+containing the struct fields in the correct order. The Store function can be
+used to convert such values to Go structs.
+
+# Unix FD passing
+
+Handling Unix file descriptors deserves special mention. To use them, you should
+first check that they are supported on a connection by calling SupportsUnixFDs.
+If it returns true, all method of Connection will translate messages containing
+UnixFD's to messages that are accompanied by the given file descriptors with the
+UnixFD values being substituted by the correct indices. Similarly, the indices
+of incoming messages are automatically resolved. It shouldn't be necessary to
+use UnixFDIndex.
+
+VARIABLES
+
+var (
+	ErrMsgInvalidArg = Error{
+		"org.freedesktop.DBus.Error.InvalidArgs",
+		[]any{"Invalid type / number of args"},
+	}
+	ErrMsgNoObject = Error{
+		"org.freedesktop.DBus.Error.NoSuchObject",
+		[]any{"No such object"},
+	}
+	ErrMsgUnknownMethod = Error{
+		"org.freedesktop.DBus.Error.UnknownMethod",
+		[]any{"Unknown / invalid method"},
+	}
+	ErrMsgUnknownInterface = Error{
+		"org.freedesktop.DBus.Error.UnknownInterface",
+		[]any{"Object does not implement the interface"},
+	}
+)
+var ErrClosed = errors.New("dbus: connection closed by user")
+    ErrClosed is the error returned by calls on a closed connection.
+
+
+FUNCTIONS
+
+func EscapeBusAddressValue(val string) string
+    EscapeBusAddressValue implements a requirement to escape the values
+    in D-Bus server addresses, as defined by the D-Bus specification at
+    https://dbus.freedesktop.org/doc/dbus-specification.html#addresses.
+
+func Store(src []any, dest ...any) error
+    Store copies the values contained in src to dest, which must be a slice of
+    pointers. It converts slices of interfaces from src to corresponding structs
+    in dest. An error is returned if the lengths of src and dest or the types of
+    their elements don't match.
+
+func UnescapeBusAddressValue(val string) (string, error)
+    UnescapeBusAddressValue unescapes values in D-Bus server
+    addresses, as defined by the D-Bus specification at
+    https://dbus.freedesktop.org/doc/dbus-specification.html#addresses.
+
+func NewDefaultHandler() *defaultHandler
+    NewDefaultHandler returns an instance of the default call handler. This is
+    useful if you want to implement only one of the two handlers but not both.
+
+    Deprecated: this is the default value, don't use it, it will be unexported.
+
+func NewDefaultSignalHandler() *defaultSignalHandler
+    NewDefaultSignalHandler returns an instance of the default signal handler.
+    This is useful if you want to implement only one of the two handlers but not
+    both.
+
+    Deprecated: this is the default value, don't use it, it will be unexported.
+
+
+TYPES
+
+type ArgumentDecoder interface {
+	// To decode the arguments of a method the sender and message are
+	// provided in case the semantics of the implementer provides access
+	// to these as part of the method invocation.
+	DecodeArguments(conn *Conn, sender string, msg *Message, args []any) ([]any, error)
+}
+    An Argument Decoder can decode arguments using the non-standard mechanism
+
+    If a method implements this interface then the non-standard decoder will be
+    used.
+
+    Method arguments must be decoded from the message. The mechanism for doing
+    this will vary based on the implementation of the method. A normal approach
+    is provided as part of this library, but may be replaced with any other
+    decoding scheme.
+
+type Auth interface {
+	// Return the name of the mechanism, the argument to the first AUTH command
+	// and the next status.
+	FirstData() (name, resp []byte, status AuthStatus)
+
+	// Process the given DATA command, and return the argument to the DATA
+	// command and the next status. If len(resp) == 0, no DATA command is sent.
+	HandleData(data []byte) (resp []byte, status AuthStatus)
+}
+    Auth defines the behaviour of an authentication mechanism.
+
+func AuthAnonymous() Auth
+    AuthAnonymous returns an Auth that uses the ANONYMOUS mechanism.
+
+func AuthExternal(user string) Auth
+    AuthExternal returns an Auth that authenticates as the given user with the
+    EXTERNAL mechanism.
+
+type AuthStatus byte
+    AuthStatus represents the Status of an authentication mechanism.
+
+const (
+	// AuthOk signals that authentication is finished; the next command
+	// from the server should be an OK.
+	AuthOk AuthStatus = iota
+
+	// AuthContinue signals that additional data is needed; the next command
+	// from the server should be a DATA.
+	AuthContinue
+
+	// AuthError signals an error; the server sent invalid data or some
+	// other unexpected thing happened and the current authentication
+	// process should be aborted.
+	AuthError
+)
+type BusObject interface {
+	Call(method string, flags Flags, args ...any) *Call
+	CallWithContext(ctx context.Context, method string, flags Flags, args ...any) *Call
+	Go(method string, flags Flags, ch chan *Call, args ...any) *Call
+	GoWithContext(ctx context.Context, method string, flags Flags, ch chan *Call, args ...any) *Call
+	AddMatchSignal(iface, member string, options ...MatchOption) *Call
+	RemoveMatchSignal(iface, member string, options ...MatchOption) *Call
+	GetProperty(p string) (Variant, error)
+	StoreProperty(p string, value any) error
+	SetProperty(p string, v any) error
+	Destination() string
+	Path() ObjectPath
+}
+    BusObject is the interface of a remote object on which methods can be
+    invoked.
+
+type Call struct {
+	Destination string
+	Path        ObjectPath
+	Method      string
+	Args        []any
+
+	// Strobes when the call is complete.
+	Done chan *Call
+
+	// After completion, the error status. If this is non-nil, it may be an
+	// error message from the peer (with Error as its type) or some other error.
+	Err error
+
+	// Holds the response once the call is done.
+	Body []any
+
+	// ResponseSequence stores the sequence number of the DBus message containing
+	// the call response (or error). This can be compared to the sequence number
+	// of other call responses and signals on this connection to determine their
+	// relative ordering on the underlying DBus connection.
+	// For errors, ResponseSequence is populated only if the error came from a
+	// DBusMessage that was received or if there was an error receiving. In case of
+	// failure to make the call, ResponseSequence will be NoSequence.
+	ResponseSequence Sequence
+
+	// Has unexported fields.
+}
+    Call represents a pending or completed method call.
+
+func (c *Call) Context() context.Context
+
+func (c *Call) ContextCancel()
+
+func (c *Call) Store(retvalues ...any) error
+    Store stores the body of the reply into the provided pointers. It returns
+    an error if the signatures of the body and retvalues don't match, or if the
+    error status is not nil.
+
+type Conn struct {
+	// Has unexported fields.
+}
+    Conn represents a connection to a message bus (usually, the system or
+    session bus).
+
+    Connections are either shared or private. Shared connections are shared
+    between calls to the functions that return them. As a result, the methods
+    Close, Auth and Hello must not be called on them.
+
+    Multiple goroutines may invoke methods on a connection simultaneously.
+
+func Connect(address string, opts ...ConnOption) (*Conn, error)
+    Connect connects to the given address.
+
+    Returned connection is ready to use and doesn't require calling Auth and
+    Hello methods to make it usable.
+
+func ConnectSessionBus(opts ...ConnOption) (*Conn, error)
+    ConnectSessionBus connects to the session bus.
+
+func ConnectSystemBus(opts ...ConnOption) (*Conn, error)
+    ConnectSystemBus connects to the system bus.
+
+func ConnectUnix(uconn *net.UnixConn, opts ...ConnOption) (*Conn, error)
+
+func Dial(address string, opts ...ConnOption) (*Conn, error)
+    Dial establishes a new private connection to the message bus specified by
+    address.
+
+func DialHandler(address string, handler Handler, signalHandler SignalHandler) (*Conn, error)
+    DialHandler establishes a new private connection to the message bus
+    specified by address, using the supplied handlers.
+
+    Deprecated: use Dial with options instead.
+
+func DialUnix(conn *net.UnixConn, opts ...ConnOption) (*Conn, error)
+    DialUnix establishes a new private connection to the message bus specified
+    by UnixConn.
+
+func NewConn(conn io.ReadWriteCloser, opts ...ConnOption) (*Conn, error)
+    NewConn creates a new private *Conn from an already established connection.
+
+func NewConnHandler(conn io.ReadWriteCloser, handler Handler, signalHandler SignalHandler) (*Conn, error)
+    NewConnHandler creates a new private *Conn from an already established
+    connection, using the supplied handlers.
+
+    Deprecated: use NewConn with options instead.
+
+func SessionBus() (conn *Conn, err error)
+    SessionBus returns a shared connection to the session bus, connecting to it
+    if not already done.
+
+func SessionBusPrivate(opts ...ConnOption) (*Conn, error)
+    SessionBusPrivate returns a new private connection to the session bus.
+
+func SessionBusPrivateHandler(handler Handler, signalHandler SignalHandler) (*Conn, error)
+    SessionBusPrivateHandler returns a new private connection to the session
+    bus.
+
+    Deprecated: use SessionBusPrivate with options instead.
+
+func SessionBusPrivateNoAutoStartup(opts ...ConnOption) (*Conn, error)
+    SessionBusPrivateNoAutoStartup returns a new private connection to the
+    session bus. If the session bus is not already open, do not attempt to
+    launch it.
+
+func SystemBus() (conn *Conn, err error)
+    SystemBus returns a shared connection to the system bus, connecting to it if
+    not already done.
+
+func SystemBusPrivate(opts ...ConnOption) (*Conn, error)
+    SystemBusPrivate returns a new private connection to the system bus. Note:
+    this connection is not ready to use. One must perform Auth and Hello on the
+    connection before it is usable.
+
+func SystemBusPrivateHandler(handler Handler, signalHandler SignalHandler) (*Conn, error)
+    SystemBusPrivateHandler returns a new private connection to the system bus,
+    using the provided handlers.
+
+    Deprecated: use SystemBusPrivate with options instead.
+
+func (conn *Conn) AddMatchSignal(options ...MatchOption) error
+    AddMatchSignal registers the given match rule to receive broadcast signals
+    based on their contents.
+
+func (conn *Conn) AddMatchSignalContext(ctx context.Context, options ...MatchOption) error
+    AddMatchSignalContext acts like AddMatchSignal but takes a context.
+
+func (conn *Conn) Auth(methods []Auth) error
+    Auth authenticates the connection, trying the given list of authentication
+    mechanisms (in that order). If nil is passed, the EXTERNAL and
+    DBUS_COOKIE_SHA1 mechanisms are tried for the current user. For private
+    connections, this method must be called before sending any messages to the
+    bus. Auth must not be called on shared connections.
+
+func (conn *Conn) BusObject() BusObject
+    BusObject returns the object owned by the bus daemon which handles
+    administrative requests.
+
+func (conn *Conn) Close() error
+    Close closes the connection. Any blocked operations will return with errors
+    and the channels passed to Eavesdrop and Signal are closed. This method must
+    not be called on shared connections.
+
+func (conn *Conn) Connected() bool
+    Connected returns whether conn is connected
+
+func (conn *Conn) Context() context.Context
+    Context returns the context associated with the connection. The context will
+    be cancelled when the connection is closed.
+
+func (conn *Conn) Eavesdrop(ch chan<- *Message)
+    Eavesdrop causes conn to send all incoming messages to the given channel
+    without further processing. Method replies, errors and signals will not
+    be sent to the appropriate channels and method calls will not be handled.
+    If nil is passed, the normal behaviour is restored.
+
+    The caller has to make sure that ch is sufficiently buffered; if a message
+    arrives when a write to ch is not possible, the message is discarded.
+
+func (conn *Conn) Emit(path ObjectPath, name string, values ...any) error
+    Emit emits the given signal on the message bus. The name parameter must be
+    formatted as "interface.member", e.g., "org.freedesktop.DBus.NameLost".
+
+func (conn *Conn) Export(v any, path ObjectPath, iface string) error
+    Export registers the given value to be exported as an object on the message
+    bus.
+
+    If a method call on the given path and interface is received, an exported
+    method with the same name is called with v as the receiver if the parameters
+    match and the last return value is of type *Error. If this *Error is not
+    nil, it is sent back to the caller as an error. Otherwise, a method reply is
+    sent with the other return values as its body.
+
+    Any parameters with the special type Sender are set to the sender of the
+    dbus message when the method is called. Parameters of this type do not
+    contribute to the dbus signature of the method (i.e. the method is exposed
+    as if the parameters of type Sender were not there).
+
+    Similarly, any parameters with the type Message are set to the raw message
+    received on the bus. Again, parameters of this type do not contribute to the
+    dbus signature of the method.
+
+    Every method call is executed in a new goroutine, so the method may be
+    called in multiple goroutines at once.
+
+    Method calls on the interface org.freedesktop.DBus.Peer will be
+    automatically handled for every object.
+
+    Passing nil as the first parameter will cause conn to cease handling calls
+    on the given combination of path and interface.
+
+    Export returns an error if path is not a valid path name.
+
+func (conn *Conn) ExportAll(v any, path ObjectPath, iface string) error
+    ExportAll registers all exported methods defined by the given object on the
+    message bus.
+
+    Unlike Export there is no requirement to have the last parameter as type
+    *Error. If you want to be able to return error then you can append an error
+    type parameter to your method signature. If the error returned is not nil,
+    it is sent back to the caller as an error. Otherwise, a method reply is sent
+    with the other return values as its body.
+
+func (conn *Conn) ExportMethodTable(methods map[string]any, path ObjectPath, iface string) error
+    ExportMethodTable like Export registers the given methods as an object on
+    the message bus. Unlike Export the it uses a method table to define the
+    object instead of a native go object.
+
+    The method table is a map from method name to function closure representing
+    the method. This allows an object exported on the bus to not necessarily be
+    a native go object. It can be useful for generating exposed methods on the
+    fly.
+
+    Any non-function objects in the method table are ignored.
+
+func (conn *Conn) ExportSubtree(v any, path ObjectPath, iface string) error
+    ExportSubtree works exactly like Export but registers the given value for an
+    entire subtree rather under the root path provided.
+
+    In order to make this useful, one parameter in each of the value's exported
+    methods should be a Message, in which case it will contain the raw message
+    (allowing one to get access to the path that caused the method to be
+    called).
+
+    Note that more specific export paths take precedence over less specific.
+    For example, a method call using the ObjectPath /foo/bar/baz will call a
+    method exported on /foo/bar before a method exported on /foo.
+
+func (conn *Conn) ExportSubtreeMethodTable(methods map[string]any, path ObjectPath, iface string) error
+    Like ExportSubtree, but with the same caveats as ExportMethodTable.
+
+func (conn *Conn) ExportSubtreeWithMap(v any, mapping map[string]string, path ObjectPath, iface string) error
+    ExportSubtreeWithMap works exactly like ExportSubtree but provides the
+    ability to remap method names (e.g. export a lower-case method).
+
+    The keys in the map are the real method names (exported on the struct),
+    and the values are the method names to be exported on DBus.
+
+func (conn *Conn) ExportWithMap(v any, mapping map[string]string, path ObjectPath, iface string) error
+    ExportWithMap works exactly like Export but provides the ability to remap
+    method names (e.g. export a lower-case method).
+
+    The keys in the map are the real method names (exported on the struct),
+    and the values are the method names to be exported on DBus.
+
+func (conn *Conn) Hello() error
+    Hello sends the initial org.freedesktop.DBus.Hello call. This method must
+    be called after authentication, but before sending any other messages to the
+    bus. Hello must not be called for shared connections.
+
+func (conn *Conn) Names() []string
+    Names returns the list of all names that are currently owned by this
+    connection. The slice is always at least one element long, the first element
+    being the unique name of the connection.
+
+func (conn *Conn) Object(dest string, path ObjectPath) BusObject
+    Object returns the object identified by the given destination name and path.
+
+func (conn *Conn) ReleaseName(name string) (ReleaseNameReply, error)
+    ReleaseName calls org.freedesktop.DBus.ReleaseName and awaits a response.
+
+func (conn *Conn) RemoveMatchSignal(options ...MatchOption) error
+    RemoveMatchSignal removes the first rule that matches previously registered
+    with AddMatchSignal.
+
+func (conn *Conn) RemoveMatchSignalContext(ctx context.Context, options ...MatchOption) error
+    RemoveMatchSignalContext acts like RemoveMatchSignal but takes a context.
+
+func (conn *Conn) RemoveSignal(ch chan<- *Signal)
+    RemoveSignal removes the given channel from the list of the registered
+    channels.
+
+    Panics if the signal handler is not a `SignalRegistrar`.
+
+func (conn *Conn) RequestName(name string, flags RequestNameFlags) (RequestNameReply, error)
+    RequestName calls org.freedesktop.DBus.RequestName and awaits a response.
+
+func (conn *Conn) Send(msg *Message, ch chan *Call) *Call
+    Send sends the given message to the message bus. You usually don't need to
+    use this; use the higher-level equivalents (Call / Go, Emit and Export)
+    instead. If msg is a method call and NoReplyExpected is not set, a non-nil
+    call is returned and the same value is sent to ch (which must be buffered)
+    once the call is complete. Otherwise, ch is ignored and a Call structure is
+    returned of which only the Err member is valid.
+
+func (conn *Conn) SendWithContext(ctx context.Context, msg *Message, ch chan *Call) *Call
+    SendWithContext acts like Send but takes a context
+
+func (conn *Conn) Signal(ch chan<- *Signal)
+    Signal registers the given channel to be passed all received signal
+    messages.
+
+    Multiple of these channels can be registered at the same time. The channel
+    is closed if the Conn is closed; it should not be closed by the caller
+    before RemoveSignal was called on it.
+
+    These channels are "overwritten" by Eavesdrop; i.e., if there currently is
+    a channel for eavesdropped messages, this channel receives all signals,
+    and none of the channels passed to Signal will receive any signals.
+
+    Panics if the signal handler is not a `SignalRegistrar`.
+
+func (conn *Conn) SupportsUnixFDs() bool
+    SupportsUnixFDs returns whether the underlying transport supports passing of
+    unix file descriptors. If this is false, method calls containing unix file
+    descriptors will return an error and emitted signals containing them will
+    not be sent.
+
+type ConnOption func(conn *Conn) error
+    ConnOption is a connection option.
+
+func WithAuth(methods ...Auth) ConnOption
+    WithAuth sets authentication methods for the auth conversation.
+
+func WithContext(ctx context.Context) ConnOption
+    WithContext overrides the default context for the connection.
+
+func WithHandler(handler Handler) ConnOption
+    WithHandler overrides the default handler.
+
+func WithIncomingInterceptor(interceptor Interceptor) ConnOption
+    WithIncomingInterceptor sets the given interceptor for incoming messages.
+
+func WithOutgoingInterceptor(interceptor Interceptor) ConnOption
+    WithOutgoingInterceptor sets the given interceptor for outgoing messages.
+
+func WithSerialGenerator(gen SerialGenerator) ConnOption
+    WithSerialGenerator overrides the default signals generator.
+
+func WithSignalHandler(handler SignalHandler) ConnOption
+    WithSignalHandler overrides the default signal handler.
+
+type DBusError interface {
+	DBusError() (string, []any)
+}
+    A DBusError is used to convert a generic object to a D-Bus error.
+
+    Any custom error mechanism may implement this interface to provide a custom
+    encoding of the error on D-Bus. By default if a normal error is returned,
+    it will be encoded as the generic "org.freedesktop.DBus.Error.Failed" error.
+    By implementing this interface as well a custom encoding may be provided.
+
+type Error struct {
+	Name string
+	Body []any
+}
+    Error represents a D-Bus message of type Error.
+
+func MakeFailedError(err error) *Error
+
+func MakeNoObjectError(path ObjectPath) Error
+
+func MakeUnknownInterfaceError(ifaceName string) Error
+
+func MakeUnknownMethodError(methodName string) Error
+
+func NewError(name string, body []any) *Error
+
+func (e Error) Error() string
+
+type Flags byte
+    Flags represents the possible flags of a D-Bus message.
+
+const (
+	// FlagNoReplyExpected signals that the message is not expected to generate
+	// a reply. If this flag is set on outgoing messages, any possible reply
+	// will be discarded.
+	FlagNoReplyExpected Flags = 1 << iota
+	// FlagNoAutoStart signals that the message bus should not automatically
+	// start an application when handling this message.
+	FlagNoAutoStart
+	// FlagAllowInteractiveAuthorization may be set on a method call
+	// message to inform the receiving side that the caller is prepared
+	// to wait for interactive authorization, which might take a
+	// considerable time to complete. For instance, if this flag is set,
+	// it would be appropriate to query the user for passwords or
+	// confirmation via Polkit or a similar framework.
+	FlagAllowInteractiveAuthorization
+)
+type FormatError string
+    A FormatError is an error in the wire format.
+
+func (e FormatError) Error() string
+
+type Handler interface {
+	LookupObject(path ObjectPath) (ServerObject, bool)
+}
+    Handler is the representation of a D-Bus Application.
+
+    The Handler must have a way to lookup objects given an ObjectPath. The
+    returned object must implement the ServerObject interface.
+
+type HeaderField byte
+    HeaderField represents the possible byte codes for the headers of a D-Bus
+    message.
+
+const (
+	FieldPath HeaderField = 1 + iota
+	FieldInterface
+	FieldMember
+	FieldErrorName
+	FieldReplySerial
+	FieldDestination
+	FieldSender
+	FieldSignature
+	FieldUnixFDs
+)
+type Interceptor func(msg *Message)
+    Interceptor intercepts incoming and outgoing messages.
+
+type Interface interface {
+	LookupMethod(name string) (Method, bool)
+}
+    An Interface is the representation of a D-Bus Interface.
+
+    Interfaces are a grouping of methods implemented by the Objects. Interfaces
+    are responsible for routing method calls.
+
+type InvalidMessageError string
+    An InvalidMessageError describes the reason why a D-Bus message is regarded
+    as invalid.
+
+func (e InvalidMessageError) Error() string
+
+type InvalidTypeError struct {
+	Type reflect.Type
+}
+    An InvalidTypeError signals that a value which cannot be represented in the
+    D-Bus wire format was passed to a function.
+
+func (e InvalidTypeError) Error() string
+
+type MatchOption struct {
+	// Has unexported fields.
+}
+    MatchOption specifies option for dbus routing match rule.
+    Options can be constructed with WithMatch* helpers.
+    For full list of available options consult
+    https://dbus.freedesktop.org/doc/dbus-specification.html#message-bus-routing-match-rules
+
+func WithMatchArg(argIdx int, value string) MatchOption
+    WithMatchArg sets argN match option, range of N is 0 to 63.
+
+func WithMatchArg0Namespace(arg0Namespace string) MatchOption
+    WithMatchArg0Namespace sets arg0namespace match option.
+
+func WithMatchArgPath(argIdx int, path string) MatchOption
+    WithMatchArgPath sets argN path match option, range of N is 0 to 63.
+
+func WithMatchDestination(destination string) MatchOption
+    WithMatchDestination sets destination match option.
+
+func WithMatchEavesdrop(eavesdrop bool) MatchOption
+    WithMatchEavesdrop sets eavesdrop match option.
+
+func WithMatchInterface(iface string) MatchOption
+    WithMatchSender sets interface match option.
+
+func WithMatchMember(member string) MatchOption
+    WithMatchMember sets member match option.
+
+func WithMatchObjectPath(path ObjectPath) MatchOption
+    WithMatchObjectPath creates match option that filters events based on given
+    path
+
+func WithMatchOption(key, value string) MatchOption
+    WithMatchOption creates match option with given key and value
+
+func WithMatchPathNamespace(namespace ObjectPath) MatchOption
+    WithMatchPathNamespace sets path_namespace match option.
+
+func WithMatchSender(sender string) MatchOption
+    WithMatchSender sets sender match option.
+
+type Message struct {
+	Type
+	Flags
+	Headers map[HeaderField]Variant
+	Body    []any
+
+	// Has unexported fields.
+}
+    Message represents a single D-Bus message.
+
+func DecodeMessage(rd io.Reader) (msg *Message, err error)
+    DecodeMessage tries to decode a single message in the D-Bus wire format
+    from the given reader. The byte order is figured out from the first byte.
+    The possibly returned error can be an error of the underlying reader,
+    an InvalidMessageError or a FormatError.
+
+func DecodeMessageWithFDs(rd io.Reader, fds []int) (msg *Message, err error)
+
+func (msg *Message) CountFds() (int, error)
+
+func (msg *Message) EncodeTo(out io.Writer, order binary.ByteOrder) (err error)
+    EncodeTo encodes and sends a message to the given writer. The byte order
+    must be either binary.LittleEndian or binary.BigEndian. If the message is
+    not valid or an error occurs when writing, an error is returned.
+
+func (msg *Message) EncodeToWithFDs(out io.Writer, order binary.ByteOrder) (fds []int, err error)
+
+func (msg *Message) IsValid() error
+    IsValid checks whether msg is a valid message and returns an
+    InvalidMessageError or FormatError if it is not.
+
+func (msg *Message) Serial() uint32
+    Serial returns the message's serial number. The returned value is only valid
+    for messages received by eavesdropping.
+
+func (msg *Message) String() string
+    String returns a string representation of a message similar to the format of
+    dbus-monitor.
+
+type Method interface {
+	// Call requires that all arguments are decoded before being passed to it.
+	Call(args ...any) ([]any, error)
+	NumArguments() int
+	NumReturns() int
+	// ArgumentValue returns a representative value for the argument at position
+	// it should be of the proper type. reflect.Zero would be a good mechanism
+	// to use for this Value.
+	ArgumentValue(position int) any
+	// ReturnValue returns a representative value for the return at position
+	// it should be of the proper type. reflect.Zero would be a good mechanism
+	// to use for this Value.
+	ReturnValue(position int) any
+}
+    A Method represents the exposed methods on D-Bus.
+
+type Object struct {
+	// Has unexported fields.
+}
+    Object represents a remote object on which methods can be invoked.
+
+func (o *Object) AddMatchSignal(iface, member string, options ...MatchOption) *Call
+    AddMatchSignal subscribes BusObject to signals from specified interface,
+    method (member). Additional filter rules can be added via WithMatch* option
+    constructors. Note: To filter events by object path you have to specify this
+    path via an option.
+
+    Deprecated: use (*Conn) AddMatchSignal instead.
+
+func (o *Object) Call(method string, flags Flags, args ...any) *Call
+    Call calls a method with (*Object).Go and waits for its reply.
+
+func (o *Object) CallWithContext(ctx context.Context, method string, flags Flags, args ...any) *Call
+    CallWithContext acts like Call but takes a context
+
+func (o *Object) Destination() string
+    Destination returns the destination that calls on (o *Object) are sent to.
+
+func (o *Object) GetProperty(p string) (Variant, error)
+    GetProperty calls org.freedesktop.DBus.Properties.Get on the given object.
+    The property name must be given in interface.member notation.
+
+func (o *Object) Go(method string, flags Flags, ch chan *Call, args ...any) *Call
+    Go calls a method with the given arguments asynchronously. It returns a Call
+    structure representing this method call. The passed channel will return
+    the same value once the call is done. If ch is nil, a new channel will be
+    allocated. Otherwise, ch has to be buffered or Go will panic.
+
+    If the flags include FlagNoReplyExpected, ch is ignored and a Call structure
+    is returned with any error in Err and a closed channel in Done containing
+    the returned Call as it's one entry.
+
+    If the method parameter contains a dot ('.'), the part before the last dot
+    specifies the interface on which the method is called.
+
+func (o *Object) GoWithContext(ctx context.Context, method string, flags Flags, ch chan *Call, args ...any) *Call
+    GoWithContext acts like Go but takes a context
+
+func (o *Object) Path() ObjectPath
+    Path returns the path that calls on (o *Object") are sent to.
+
+func (o *Object) RemoveMatchSignal(iface, member string, options ...MatchOption) *Call
+    RemoveMatchSignal unsubscribes BusObject from signals from specified
+    interface, method (member). Additional filter rules can be added via
+    WithMatch* option constructors
+
+    Deprecated: use (*Conn) RemoveMatchSignal instead.
+
+func (o *Object) SetProperty(p string, v any) error
+    SetProperty calls org.freedesktop.DBus.Properties.Set on the given object.
+    The property name must be given in interface.member notation. Panics if v is
+    not a valid Variant type.
+
+func (o *Object) StoreProperty(p string, value any) error
+    StoreProperty calls org.freedesktop.DBus.Properties.Get on the given object.
+    The property name must be given in interface.member notation. It stores the
+    returned property into the provided value.
+
+type ObjectPath string
+    An ObjectPath is an object path as defined by the D-Bus spec.
+
+func (o ObjectPath) IsValid() bool
+    IsValid returns whether the object path is valid.
+
+type ReleaseNameReply uint32
+    ReleaseNameReply is the reply to a ReleaseName call.
+
+const (
+	ReleaseNameReplyReleased ReleaseNameReply = 1 + iota
+	ReleaseNameReplyNonExistent
+	ReleaseNameReplyNotOwner
+)
+func (rep ReleaseNameReply) String() string
+
+type RequestNameFlags uint32
+    RequestNameFlags represents the possible flags for a RequestName call.
+
+const (
+	NameFlagAllowReplacement RequestNameFlags = 1 << iota
+	NameFlagReplaceExisting
+	NameFlagDoNotQueue
+)
+type RequestNameReply uint32
+    RequestNameReply is the reply to a RequestName call.
+
+const (
+	RequestNameReplyPrimaryOwner RequestNameReply = 1 + iota
+	RequestNameReplyInQueue
+	RequestNameReplyExists
+	RequestNameReplyAlreadyOwner
+)
+func (rep RequestNameReply) String() string
+
+type Sender string
+    Sender is a type which can be used in exported methods to receive the
+    message sender.
+
+type Sequence uint64
+    Sequence represents the value of a monotonically increasing counter.
+
+const (
+	// NoSequence indicates the absence of a sequence value.
+	NoSequence Sequence = 0
+)
+type SerialGenerator interface {
+	GetSerial() uint32
+	RetireSerial(serial uint32)
+}
+    SerialGenerator is responsible for serials generation.
+
+    Different approaches for the serial generation can be used, maintaining a
+    map guarded with a mutex (the standard way) or simply increment an atomic
+    counter.
+
+type ServerObject interface {
+	LookupInterface(name string) (Interface, bool)
+}
+    ServerObject is the representation of an D-Bus Object.
+
+    Objects are registered at a path for a given Handler. The Objects
+    implement D-Bus interfaces. The semantics of Interface lookup is up to
+    the implementation of the ServerObject. The ServerObject implementation
+    may choose to implement empty string as a valid interface representing all
+    methods or not per the D-Bus specification.
+
+type Signal struct {
+	Sender   string
+	Path     ObjectPath
+	Name     string
+	Body     []any
+	Sequence Sequence
+}
+    Signal represents a D-Bus message of type Signal. The name member is given
+    in "interface.member" notation, e.g. org.freedesktop.D-Bus.NameLost.
+
+type SignalHandler interface {
+	DeliverSignal(iface, name string, signal *Signal)
+}
+    A SignalHandler is responsible for delivering a signal.
+
+    Signal delivery may be changed from the default channel based approach by
+    Handlers implementing the SignalHandler interface.
+
+func NewSequentialSignalHandler() SignalHandler
+    NewSequentialSignalHandler returns an instance of a new signal handler
+    that guarantees sequential processing of signals. It is a guarantee of this
+    signal handler that signals will be written to channels in the order they
+    are received on the DBus connection.
+
+type SignalRegistrar interface {
+	AddSignal(ch chan<- *Signal)
+	RemoveSignal(ch chan<- *Signal)
+}
+    SignalRegistrar manages signal delivery channels.
+
+    This is an optional set of methods for `SignalHandler`.
+
+type Signature struct {
+	// Has unexported fields.
+}
+    Signature represents a correct type signature as specified by the D-Bus
+    specification. The zero value represents the empty signature, "".
+
+func ParseSignature(s string) (sig Signature, err error)
+    ParseSignature returns the signature represented by this string, or a
+    SignatureError if the string is not a valid signature.
+
+func ParseSignatureMust(s string) Signature
+    ParseSignatureMust behaves like ParseSignature, except that it panics if s
+    is not valid.
+
+func SignatureOf(vs ...any) Signature
+    SignatureOf returns the concatenation of all the signatures of the given
+    values. It panics if one of them is not representable in D-Bus.
+
+func SignatureOfType(t reflect.Type) Signature
+    SignatureOfType returns the signature of the given type. It panics if the
+    type is not representable in D-Bus.
+
+func (s Signature) Empty() bool
+    Empty returns whether the signature is the empty signature.
+
+func (s Signature) Single() bool
+    Single returns whether the signature represents a single, complete type.
+
+func (s Signature) String() string
+    String returns the signature's string representation.
+
+type SignatureError struct {
+	Sig    string
+	Reason string
+}
+    A SignatureError indicates that a signature passed to a function or received
+    on a connection is not a valid signature.
+
+func (e SignatureError) Error() string
+
+type Terminator interface {
+	Terminate()
+}
+    Terminator allows a handler to implement a shutdown mechanism that is called
+    when the connection terminates.
+
+type Type byte
+    Type represents the possible types of a D-Bus message.
+
+const (
+	TypeMethodCall Type = 1 + iota
+	TypeMethodReply
+	TypeError
+	TypeSignal
+)
+func (t Type) String() string
+
+type UnixFD int32
+    A UnixFD is a Unix file descriptor sent over the wire. See the package-level
+    documentation for more information about Unix file descriptor passing.
+
+type UnixFDIndex uint32
+    A UnixFDIndex is the representation of a Unix file descriptor in a message.
+
+type Variant struct {
+	// Has unexported fields.
+}
+    Variant represents the D-Bus variant type.
+
+func MakeVariant(v any) Variant
+    MakeVariant converts the given value to a Variant. It panics if v cannot be
+    represented as a D-Bus type.
+
+func MakeVariantWithSignature(v any, s Signature) Variant
+    MakeVariantWithSignature converts the given value to a Variant.
+
+func ParseVariant(s string, sig Signature) (Variant, error)
+    ParseVariant parses the given string as a variant as described at
+    https://developer.gnome.org/glib/stable/gvariant-text.html. If sig is not
+    empty, it is taken to be the expected signature for the variant.
+
+func (v Variant) Signature() Signature
+    Signature returns the D-Bus signature of the underlying value of v.
+
+func (v Variant) Store(value any) error
+    Store converts the variant into a native go type using the same mechanism as
+    the "Store" function.
+
+func (v Variant) String() string
+    String returns the string representation of the underlying value of v as
+    described at https://developer.gnome.org/glib/stable/gvariant-text.html.
+
+func (v Variant) Value() any
+    Value returns the underlying value of v.
+
