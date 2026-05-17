@@ -1,1 +1,0 @@
-https://gnome.pages.gitlab.gnome.org/at-spi2-core/devel-docs/xml-interfaces.html

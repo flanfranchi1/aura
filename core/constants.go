@@ -2,7 +2,6 @@ package core
 
 type Role uint32
 type State uint32
-type StateSet []uint32
 
 // AT-SPI2 roles identifiers, taken from https://gitlab.gnome.org/GNOME/at-spi2-core/-/blob/main/atspi/atspi-constants.h
 const (
@@ -226,112 +225,8 @@ func (r Role) String() string {
 }
 
 const (
-	AtspiBusLocation       = "/org/a11y/bus"
-	AtspiBusName           = "org.a11y.Bus"
-	AtspiInterface         = "org.a11y.atspi"
-	AtspiRegistryPath      = "/org/a11y/atspi/registry"
-	AtspiRegistryInterface = "org.a11y.atspi.Registry"
+	AtspiLocation     = "/org/a11y/bus"
+	AtspiBusName      = "org.a11y.Bus"
+	AtspiInterface    = "org.a11y.atspi"
+	AtspiRegistryPath = "/org/a11y/atspi/registry"
 )
-
-const (
-	ATSPI_STATE_INVALIDState = iota
-	ATSPI_STATE_ACTIVE
-	ATSPI_STATE_ARMED
-	ATSPI_STATE_BUSY
-	ATSPI_STATE_CHECKED
-	ATSPI_STATE_COLLAPSED
-	ATSPI_STATE_DEFUNCT
-	ATSPI_STATE_EDITABLE
-	ATSPI_STATE_ENABLED
-	ATSPI_STATE_EXPANDABLE
-	ATSPI_STATE_EXPANDED
-	ATSPI_STATE_FOCUSABLE
-	ATSPI_STATE_FOCUSED
-	ATSPI_STATE_HAS_TOOLTIP
-	ATSPI_STATE_HORIZONTAL
-	ATSPI_STATE_ICONIFIED
-	ATSPI_STATE_MODAL
-	ATSPI_STATE_MULTI_LINE
-	ATSPI_STATE_MULTISELECTABLE
-	ATSPI_STATE_OPAQUE
-	ATSPI_STATE_PRESSED
-	ATSPI_STATE_RESIZABLE
-	ATSPI_STATE_SELECTABLE
-	ATSPI_STATE_SELECTED
-	ATSPI_STATE_SENSITIVE
-	ATSPI_STATE_SHOWING
-	ATSPI_STATE_SINGLE_LINE
-	ATSPI_STATE_STALE
-	ATSPI_STATE_TRANSIENT
-	ATSPI_STATE_VERTICAL
-	ATSPI_STATE_VISIBLE
-	ATSPI_STATE_MANAGES_DESCENDANTS
-	ATSPI_STATE_INDETERMINATE
-	ATSPI_STATE_REQUIRED
-	ATSPI_STATE_TRUNCATED
-	ATSPI_STATE_ANIMATED
-	ATSPI_STATE_INVALID_ENTRY
-	ATSPI_STATE_SUPPORTS_AUTOCOMPLETION
-	ATSPI_STATE_SELECTABLE_TEXT
-	ATSPI_STATE_IS_DEFAULT
-	ATSPI_STATE_VISITED
-	ATSPI_STATE_CHECKABLE
-	ATSPI_STATE_HAS_POPUP
-	ATSPI_STATE_READ_ONLY
-	ATSPI_STATE_LAST_DEFINED
-)
-
-var stateNames = map[State]string{
-	ATSPI_STATE_INVALIDState:            "Invalid",
-	ATSPI_STATE_ACTIVE:                  "Active",
-	ATSPI_STATE_ARMED:                   "Armed",
-	ATSPI_STATE_BUSY:                    "Busy",
-	ATSPI_STATE_CHECKED:                 "Checked",
-	ATSPI_STATE_COLLAPSED:               "Collapsed",
-	ATSPI_STATE_DEFUNCT:                 "Defunct",
-	ATSPI_STATE_EDITABLE:                "Editable",
-	ATSPI_STATE_ENABLED:                 "Enabled",
-	ATSPI_STATE_EXPANDABLE:              "Expandable",
-	ATSPI_STATE_EXPANDED:                "Expanded",
-	ATSPI_STATE_FOCUSABLE:               "Focusable",
-	ATSPI_STATE_FOCUSED:                 "Focused",
-	ATSPI_STATE_HAS_TOOLTIP:             "Has Tooltip",
-	ATSPI_STATE_HORIZONTAL:              "Horizontal",
-	ATSPI_STATE_ICONIFIED:               "Iconified",
-	ATSPI_STATE_MODAL:                   "Modal",
-	ATSPI_STATE_MULTI_LINE:              "Multi Line",
-	ATSPI_STATE_MULTISELECTABLE:         "Multiselectable",
-	ATSPI_STATE_OPAQUE:                  "Opaque",
-	ATSPI_STATE_PRESSED:                 "Pressed",
-	ATSPI_STATE_RESIZABLE:               "Resizable",
-	ATSPI_STATE_SELECTABLE:              "Selectable",
-	ATSPI_STATE_SELECTED:                "Selected",
-	ATSPI_STATE_SENSITIVE:               "Sensitive",
-	ATSPI_STATE_SHOWING:                 "Showing",
-	ATSPI_STATE_SINGLE_LINE:             "Single Line",
-	ATSPI_STATE_STALE:                   "Stale",
-	ATSPI_STATE_TRANSIENT:               "Transient",
-	ATSPI_STATE_VERTICAL:                "Vertical",
-	ATSPI_STATE_VISIBLE:                 "Visible",
-	ATSPI_STATE_MANAGES_DESCENDANTS:     "Manages Descendants",
-	ATSPI_STATE_INDETERMINATE:           "Indeterminate",
-	ATSPI_STATE_REQUIRED:                "Required",
-	ATSPI_STATE_TRUNCATED:               "Truncated",
-	ATSPI_STATE_ANIMATED:                "Animated",
-	ATSPI_STATE_INVALID_ENTRY:           "Invalid Entry",
-	ATSPI_STATE_SUPPORTS_AUTOCOMPLETION: "Supports Autocompletion",
-	ATSPI_STATE_SELECTABLE_TEXT:         "Selectable Text",
-	ATSPI_STATE_IS_DEFAULT:              "Is Default",
-	ATSPI_STATE_VISITED:                 "Visited",
-	ATSPI_STATE_CHECKABLE:               "Checkable",
-	ATSPI_STATE_HAS_POPUP:               "Has Popup",
-	ATSPI_STATE_READ_ONLY:               "Read Only",
-	ATSPI_STATE_LAST_DEFINED:            "Last Defined",
-}
-
-func (s State) String() string {
-	if name, exists := stateNames[s]; exists {
-		return name
-	}
-	return "Unknown State"
-}

@@ -1,54 +1,41 @@
 package core
 
 import (
-	"aura/internal/dbus_handler"
-	"strings"
+	"fmt"
+
+	"github.com/godbus/dbus/v5"
 )
 
 // AccessibleObject encapsula os metadados de um elemento da UI
 type AccessibleObject struct {
-	ParentObjectName string
-	Name             string
-	Role             Role
-	State            StateSet
-	ID               string
+	Path dbus.ObjectPath
+	Name string
+	Role Role
+	ID   string
 }
 
 // FetchObject busca os detalhes do objeto que disparou o evento
-func FetchObject(c *dbus_handler.Client, sender, path string) (*AccessibleObject, error) {
-	name, err := c.GetStringProperty(sender, path, "Name")
-	role, err := c.GetUint32Property(sender, path, "Role")
-	state, err := c.GetStateSetProperty(sender, path, "State")
+func FetchObject(conn *dbus.Conn, sender string, path dbus.ObjectPath) (*AccessibleObject, error) {
+	obj := conn.Object(sender, path)
+
+	var name string
+	// Buscamos o nome (interface org.a11y.atspi.Accessible)
+	err := obj.Call("org.a11y.atspi.Accessible.GetName", 0).Store(&name)
+	if err != nil {
+		name = "unknown"
+	}
+
+	var roleID uint32
+	// Buscamos o papel (ID numérico que será traduzido pelo seu iota)
+	err = obj.Call("org.a11y.atspi.Accessible.GetRole", 0).Store(&roleID)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao obter role: %v", err)
+	}
+
 	return &AccessibleObject{
-		Name:  name,
-		Role:  Role(role),
-		State: StateSet(state),
-	}, err
-}
-
-func (a *AccessibleObject) CurrentStates() []string {
-	states := make([]string, 0, 20)
-
-	for i := uint32(0); i < 32; i++ {
-		if a.State[0]&(1<<i) != 0 {
-			states = append(states, State(i).String())
-		}
-
-	}
-
-	for i := uint32(0); i < 32; i++ {
-		if a.State[1]&(1<<i) != 0 {
-			states = append(states, State(i+32).String())
-		}
-	}
-
-	return states
-}
-
-func (a *AccessibleObject) PrepareStatesAsText() string {
-	states := a.CurrentStates()
-	if len(states) == 0 {
-		return ""
-	}
-	return strings.Join(states, ", ")
+		Path: path,
+		Name: name,
+		Role: Role(roleID),
+		ID:   sender,
+	}, nil
 }
