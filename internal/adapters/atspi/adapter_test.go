@@ -1,6 +1,7 @@
 package atspi
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
@@ -99,5 +100,42 @@ func TestIsFocusStateChangedSignal(t *testing.T) {
 				t.Fatalf("expected %v, got %v", tc.expected, actual)
 			}
 		})
+	}
+}
+
+func findRootApp(children []ObjectReference, path dbus.ObjectPath) (ObjectReference, bool) {
+	var bestMatch ObjectReference
+	var bestLen int
+	found := false
+
+	for _, child := range children {
+		if strings.HasPrefix(string(path), string(child.Path)) {
+			if len(child.Path) > bestLen {
+				bestMatch = child
+				bestLen = len(child.Path)
+				found = true
+			}
+		}
+	}
+	return bestMatch, found
+}
+
+func TestFindRootApp(t *testing.T) {
+	children := []ObjectReference{
+		{BusName: ":1.5", Path: "/org/a11y/atspi/accessible/100"},
+		{BusName: ":1.6", Path: "/org/a11y/atspi/accessible/100/child"},
+		{BusName: ":1.7", Path: "/org/a11y/atspi/accessible/200"},
+	}
+
+	// Deeper path should match the longest prefix.
+	obj, ok := findRootApp(children, dbus.ObjectPath("/org/a11y/atspi/accessible/100/child/leaf"))
+	if !ok || obj.BusName != ":1.6" {
+		t.Fatalf("expected to find %s, got %v ok=%v", ":1.6", obj, ok)
+	}
+
+	// No match should return false.
+	_, ok = findRootApp(children, dbus.ObjectPath("/some/other/path"))
+	if ok {
+		t.Fatalf("expected no match for unrelated path")
 	}
 }

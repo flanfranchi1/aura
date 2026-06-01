@@ -44,6 +44,19 @@ func GetAccessibleName(ctx context.Context, conn *dbus.Conn, destination string,
 	return name, nil
 }
 
+func GetAccessibleDescription(ctx context.Context, conn *dbus.Conn, destination string, objectPath dbus.ObjectPath) (string, error) {
+	obj := conn.Object(destination, objectPath)
+	variant, err := obj.GetProperty("org.a11y.atspi.Accessible.Description")
+	if err != nil {
+		return "", fmt.Errorf("get accessible description: %w", err)
+	}
+	var description string
+	if err := variant.Store(&description); err != nil {
+		return "", fmt.Errorf("decode accessible description: %w", err)
+	}
+	return description, nil
+}
+
 func GetAccessibleRoleName(ctx context.Context, conn *dbus.Conn, destination string, objectPath dbus.ObjectPath) (string, error) {
 	obj := conn.Object(destination, objectPath)
 	var roleName string
