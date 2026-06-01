@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2026 Fernando Lanfranchi
+
 package main
 
 import (
@@ -70,7 +73,7 @@ func runWatchFocus(cmd *cobra.Command, _ []string) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "Press Ctrl+C to stop.")
 
 	var lastSpokenText string
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,19 +88,19 @@ func runWatchFocus(cmd *cobra.Command, _ []string) error {
 			// Generate speech text if we have useful info
 			if app != "" || name != "" || role != "" {
 				var speechText string
-				
+
 				// Optional improvement: Only repeat app name if it changed
 				if app != "" && (lastSpokenText == "" || !containsAppName(lastSpokenText, app)) {
 					speechText += app + ". "
 				}
-				
+
 				if name != "" {
 					speechText += name + ". "
 				}
 				if role != "" {
 					speechText += role + "."
 				}
-				
+
 				// Only speak if the text is different from last time
 				if speechText != "" && speechText != lastSpokenText {
 					speech.Speak(ctx, speechText)

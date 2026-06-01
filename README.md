@@ -1,56 +1,159 @@
 # Aura Core
 
-Aura is a lightweight, high-performance screen reader for Linux (Fedora/GNOME), developed in Go. 
+Aura is a lightweight, high-performance screen reader for Linux, written in Go.
 
-Designed for speed and reliability, Aura leverages the AT-SPI2 bus via D-Bus to provide real-time 
-accessibility feedback. Unlike traditional screen readers, Aura is built with a concurrency-first 
-approach, ensuring that system events and speech synthesis never block each other.
+The project targets a future where accessibility feedback is fast, reliable, observable, and deeply integrated with modern Linux desktop environments through AT-SPI2 and D-Bus.
 
-## 🚀 Key Features
+Aura is developed through an AI-assisted workflow, combining human direction, runtime experimentation, and iterative implementation.
 
-- **Built with Go:** Native performance and efficient memory management.
-- **Asynchronous Speech:** Integrated with Speech Dispatcher via Unix Sockets using a non-blocking architecture.
-- **Low Latency:** High-speed event processing through the AT-SPI2 Registry.
-- **Developer Centric:** Clean code structure, focused on extensibility and business value.
+---
 
-## 🛠️ Tech Stack
+## Vision
 
-- **Language:** Go (Golang)
-- **Communication:** D-Bus (AT-SPI2 Protocol)
-- **Speech Synthesis:** Speech Dispatcher (SSIP Protocol)
-- **OS Target:** Linux (optimized for Fedora with GNOME)
+Aura aims to become a low-latency, reliability-focused Linux screen reader designed around:
 
-## 📦 Getting Started
+* **Real-time accessibility feedback**
+* **Concurrency-friendly event processing**
+* **Robust speech integration**
+* **Observable runtime behavior**
+* **Developer-friendly debugging and experimentation**
 
-1. Ensure `speech-dispatcher` is running on your system.
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/flanfranchi1/aura.git
-   cd aura
-   ```
-3. Initialize the Go module and install tooling dependencies:
-   ```bash
-   go mod tidy
-   ```
-4. Build the project:
-   ```bash
-   make build
-   ```
-5. Run the Aura CLI doctor check:
-   ```bash
-   go run ./cmd/aura doctor
-   ```
+Long-term architectural goals include:
+
+* Low-latency AT-SPI event processing
+* Non-blocking speech orchestration
+* Clean separation of runtime concerns
+* High reliability under desktop event load
+* Practical extensibility without unnecessary complexity
+
+---
+
+## Current Status
+
+Aura is currently in an **experimental CLI diagnostic phase**.
+
+Already implemented:
+
+* AT-SPI accessibility bus discovery (`doctor`)
+* Accessibility tree inspection (`list-apps`)
+* Raw AT-SPI event observation (`watch-events`)
+* Real-time focus event monitoring (`watch-focus`)
+* Focus metadata enrichment:
+
+  * application name
+  * accessible role
+  * accessible name / description fallback
+* Audible runtime diagnostics using Speech Dispatcher
+* Linux runtime validation against Fedora / GNOME environments
+
+Current implementation favors:
+
+* small bounded slices
+* runtime evidence over assumptions
+* direct implementations before abstraction
+* fast developer feedback loops
+
+---
+
+## Key Characteristics
+
+* **Built with Go:** native performance and strong tooling.
+* **AT-SPI / D-Bus Native:** direct interaction with Linux accessibility infrastructure.
+* **Low-latency Diagnostics:** real-time runtime inspection and feedback.
+* **Speech-enabled Runtime Exploration:** accessibility events can already be observed audibly during development.
+* **AI-assisted Development Workflow:** architecture, planning, and implementation are developed collaboratively between human guidance and AI agents.
+
+---
+
+## Tech Stack
+
+* **Language:** Go (Golang)
+* **Accessibility:** AT-SPI2
+* **Communication:** D-Bus
+* **Speech:** Speech Dispatcher
+* **Target Platform:** Linux (currently optimized for Fedora + GNOME)
+
+---
+
+## Getting Started
+
+Prerequisites:
+
+* Linux desktop with AT-SPI enabled
+* `speech-dispatcher`
+* Go toolchain installed
+
+Clone:
+
+```bash
+git clone https://github.com/flanfranchi1/aura.git
+cd aura
+```
+
+Install dependencies:
+
+```bash
+go mod tidy
+```
+
+Build:
+
+```bash
+make build
+```
+
+---
+
+## CLI Examples
+
+Environment validation:
+
+```bash
+go run ./cmd/aura doctor
+```
+
+List top-level accessible applications:
+
+```bash
+go run ./cmd/aura list-apps
+```
+
+Observe raw accessibility events:
+
+```bash
+go run ./cmd/aura watch-events
+```
+
+Observe real-time focus changes with audible diagnostics:
+
+```bash
+go run ./cmd/aura watch-focus
+```
+
+---
 
 ## Development
 
-- Run unit tests:
-  ```bash
-  make test
-  ```
-- Format code:
-  ```bash
-  make fmt
-  ```
+Run tests:
+
+```bash
+make test
+```
+
+Run build + validation checks:
+
+```bash
+make check
+```
+
+Format code:
+
+```bash
+make fmt
+```
+
+---
 
 ## License
-This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+GNU GPL v3.0 — see [LICENSE](LICENSE).
